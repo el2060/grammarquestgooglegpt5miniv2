@@ -4,6 +4,9 @@ import type { QuizQuestion, FeedbackItem, ModelRewrite } from '../types';
 import { SAMPLE_TEXTS } from '../constants';
 import { Quiz } from './Quiz';
 import { Loader } from './Loader';
+import { GrammarTipsLoader } from './GrammarTipsLoader';
+import { QuizGenerationLoader } from './QuizGenerationLoader';
+import { AiPolishLoader } from './AiPolishLoader';
 import { LightBulbIcon } from './icons/LightBulbIcon';
 import { ArrowPathIcon } from './icons/ArrowPathIcon';
 import { ClipboardDocumentCheckIcon } from './icons/ClipboardDocumentCheckIcon';
@@ -141,7 +144,7 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
   const wordCount = hasText ? text.trim().split(/\s+/).length : 0;
 
   if (isLoadingFeedback) {
-    return <div className="py-10"><Loader text="Analyzing your text..." /></div>;
+    return <div className="py-10"><GrammarTipsLoader text="GPT-5 mini is analyzing your grammar..." /></div>;
   }
 
   if (feedback !== null) {
@@ -223,7 +226,7 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
 
                 {analysisView === 'quiz' && (
                     <div className="animate-fade-in">
-                        {isLoadingQuiz && <Loader text="Generating your quiz..." />}
+                        {isLoadingQuiz && <QuizGenerationLoader text="Creating your personalized quiz..." />}
                         {!isLoadingQuiz && !quiz && feedback.length > 0 && (
                             <div className="text-center py-8">
                                 <p className="text-slate-600 mb-4">Test your understanding with a quiz based on your errors.</p>
@@ -239,7 +242,7 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
 
                 {analysisView === 'polish' && (
                     <div className="animate-fade-in">
-                        {isLoadingRewrite && <Loader text="Polishing your text..." />}
+                        {isLoadingRewrite && <AiPolishLoader text="AI is perfecting your writing..." />}
                         {!isLoadingRewrite && !modelRewrite && feedback.length > 0 && (
                            <div className="text-center py-8">
                                 <p className="text-slate-600 mb-4">See how AI would polish your text to fix errors and improve clarity.</p>
