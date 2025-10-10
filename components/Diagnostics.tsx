@@ -150,7 +150,7 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
             <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
                 <h2 className="text-2xl font-bold text-slate-900">Your Analysis Results</h2>
                 <button onClick={() => handleReset(true)} className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition-colors flex-shrink-0">
-                    <ArrowPathIcon className="w-4 h-4" />
+                    <PencilSquareIcon className="w-4 h-4" />
                     Analyze New Text
                 </button>
             </div>
