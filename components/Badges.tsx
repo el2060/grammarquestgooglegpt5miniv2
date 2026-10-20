@@ -19,7 +19,7 @@ const BadgeCard: React.FC<BadgeCardProps> = ({ badge, isUnlocked, progressCount 
         <div className={`p-5 rounded-2xl flex flex-col items-center text-center transition-all duration-300 ${isUnlocked ? 'bg-white shadow-sm border border-amber-200' : 'bg-slate-100/80 border border-transparent'}`}>
             <div className={`w-24 h-24 mb-4 flex items-center justify-center transition-all duration-500 ${isUnlocked ? 'scale-110' : ''}`}>
                 {isUnlocked ? (
-                    <div className="relative">
+                    <div className="relative w-20 h-20">
                         <badge.icon className="w-full h-full text-amber-500" />
                         <CheckBadgeIcon className="absolute -top-2 -right-2 h-9 w-9 text-green-500 bg-white rounded-full" />
                     </div>
@@ -63,7 +63,7 @@ export const Badges: React.FC<BadgesProps> = ({ allBadges, unlockedBadges, maste
     <div className="max-w-5xl mx-auto">
         <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm">
             <div className="text-center max-w-2xl mx-auto">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-sm">
                     <TrophyIcon className="w-9 h-9 text-white" />
                 </div>
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900">Your Badges</h2>
@@ -84,7 +84,7 @@ export const Badges: React.FC<BadgesProps> = ({ allBadges, unlockedBadges, maste
                 <p className="text-center text-sm text-slate-500 mt-2">{Math.round(progress)}% Complete</p>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5">
                 {allBadges.map(badge => {
                     const isUnlocked = unlockedIds.has(badge.id);
                     // FIX: Dynamically calculate the progress count based on the badge type.
@@ -111,9 +111,9 @@ export const Badges: React.FC<BadgesProps> = ({ allBadges, unlockedBadges, maste
             <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center mb-4">
                 <SparklesIcon className="w-7 h-7 text-amber-300" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">Start Your Journey!</h3>
+            <h3 className="text-xl font-bold text-slate-900">{unlockedBadges.length ? 'Keep your momentum' : 'Your first badge starts here'}</h3>
             <p className="text-slate-600 mt-2 max-w-md">
-                Complete quizzes and diagnostic exercises to earn your first badges. Each achievement unlocks valuable XP!
+                {unlockedBadges.length ? 'Build mastery in another grammar area to grow your collection. Each new badge adds bonus XP.' : 'Complete a writing analysis or practise a grammar topic to earn your first badge.'}
             </p>
             <p className="text-sm text-slate-500 mt-4">
                 Try the Diagnostic Tool or Mini Quiz to get started.

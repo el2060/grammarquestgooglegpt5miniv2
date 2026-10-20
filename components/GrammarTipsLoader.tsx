@@ -180,7 +180,7 @@ export const GrammarTipsLoader: React.FC<GrammarTipsLoaderProps> = ({
       <div className="text-center space-y-2">
         <p className="text-xl font-bold text-slate-700 animate-pulse">{text}</p>
         <p className="text-sm text-slate-500 animate-pulse delay-100">
-          🧠 Learning grammar tips while GPT-5 mini works its magic...
+          🧠 Learning grammar tips while Gemini works its magic...
         </p>
         <div className="flex items-center justify-center space-x-1">
           <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Grammar Quest Coach** is a gamified grammar learning application for polytechnic students in Singapore. It uses Azure OpenAI GPT-5 mini to generate contextual quiz questions, analyze student writing, and provide personalized feedback with Singaporean contexts.
+**Grammar Quest Coach** is a gamified grammar learning application for polytechnic students in Singapore. It uses Gemini (bring your own API key) to generate contextual quiz questions, analyze student writing, and provide personalized feedback with Singaporean contexts.
 
 ## Development Commands
 
@@ -24,15 +24,9 @@ npm run preview
 
 ## Environment Setup
 
-Create `.env.local` with Azure OpenAI credentials:
-```env
-AZURE_OPENAI_ENDPOINT=https://your-endpoint.cognitiveservices.azure.com/
-AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_DEPLOYMENT=gpt-5-mini
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-```
+No environment credentials are needed. Users enter their Gemini key in the app, test it, and save it in browser storage. `services/geminiConnection.ts` handles connection checks, persistence, and direct Gemini REST requests.
 
-Environment variables are injected via Vite's `define` config in `vite.config.ts`.
+Vite does not inject provider credentials into the build.
 
 ## Architecture Overview
 
@@ -57,17 +51,13 @@ Badge unlocking logic in `App.tsx` uses `useEffect` to monitor `masteryProgress`
 
 ### AI Service Layer
 
-`services/azureOpenAIService.ts` provides four AI-powered functions:
+`services/geminiService.ts` provides four AI-powered functions:
 1. `generateQuiz(topic)` - Creates 3-question quiz for a grammar topic
 2. `analyzeTextForFeedback(text, topics)` - Identifies up to 4 grammar errors
 3. `generateQuizFromFeedback(feedback)` - Creates 5-question quiz from identified errors
 4. `generateModelRewrite(text, feedback)` - Rewrites text with corrections
 
-**GPT-5 mini constraints:**
-- Use `max_completion_tokens` (not `max_tokens`)
-- Temperature must default to 1
-- Top-p not supported
-- All responses use strict JSON schemas with `response_format: { type: "json_schema" }`
+All functions use the verified Gemini connection and structured JSON generation. Validate AI output before rendering. Keys must never be embedded in source or build output.
 
 ### View Architecture
 
@@ -110,7 +100,7 @@ Level calculation in `getCurrentLevelInfo()` determines current level, progress 
 - `App.tsx` - Root component with all state management
 - `types.ts` - TypeScript interfaces for Quiz, Feedback, Badges, Scenes
 - `constants.ts` - Grammar topics, badges, levels, sample texts
-- `services/azureOpenAIService.ts` - AI integration layer
+- `services/geminiService.ts` - AI integration layer
 - `components/Quiz.tsx` - Reusable quiz component with answer review
 - `components/Diagnostics.tsx` - Text analysis with 3-tab interface
 - `components/TopicSelector.tsx` - Categorized topic selection with unlock logic
@@ -160,11 +150,9 @@ Recent UI refresh applied consistent patterns:
 - Hover: `scale-105` with shadow enhancement
 - All styling via Tailwind CSS utility classes
 
-## Azure OpenAI Integration Notes
+## Gemini Integration Notes
 
-The app uses client-side Azure OpenAI calls with `dangerouslyAllowBrowser: true`. This is acceptable for an educational tool but production deployments should proxy through a backend to secure credentials.
-
-All prompts include context that the audience is polytechnic students in Singapore, with instructions to use relatable local contexts (e.g., MRT, kopi, hawker centers).
+The app sends requests directly to Google using each user's own key. The key is stored in localStorage under `grammarQuest.gemini.v1` and retested after reload. Never embed credentials in Vite configuration or commit them. All four AI functions use the same verified connection. See README.md for tests and limitations.
 
 ## Adding New Features
 
@@ -182,7 +170,7 @@ All prompts include context that the audience is polytechnic students in Singapo
 5. Update Badges component to display new badge type
 
 **To modify AI behavior:**
-1. Edit system/user prompts in `azureOpenAIService.ts`
+1. Edit system/user prompts in `geminiService.ts`
 2. Adjust JSON schemas if response structure changes
 3. Update TypeScript interfaces in `types.ts` to match
-4. Remember GPT-5 mini constraints on parameters
+4. Keep Gemini JSON schemas and runtime response validation in sync

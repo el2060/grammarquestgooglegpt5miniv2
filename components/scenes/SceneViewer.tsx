@@ -1,3 +1,4 @@
+import { Modal } from '../Modal';
 import React, { useState } from 'react';
 import type { Scene, Panel, DialogueLine } from '../../types';
 import { XMarkIcon } from '../icons/XMarkIcon';
@@ -30,7 +31,7 @@ const DialoguePanel: React.FC<{ panel: Panel }> = ({ panel }) => {
         <span className="font-semibold text-slate-800">{character}</span>
       </div>
       <p className="text-base sm:text-lg text-slate-700">"{renderWithHighlight(line)}"</p>
-      {annotation && <p className="text-sm text-slate-500 mt-3">💡 {annotation}</p>}
+      {annotation && <p className="text-sm text-slate-500 mt-3">{annotation}</p>}
     </div>
   );
 };
@@ -48,7 +49,7 @@ const ExplanationPanel: React.FC<{ panel: Panel, showExplanation: boolean, onTog
       <div className="p-4 sm:p-6 bg-emerald-50 border border-emerald-200 rounded-xl animate-fade-in">
         <p className="text-base sm:text-lg text-emerald-800 font-medium">{panel.explanation}</p>
         {panel.explanationAnnotation && (
-          <p className="text-sm text-emerald-700 mt-3">💡 {panel.explanationAnnotation}</p>
+          <p className="text-sm text-emerald-700 mt-3">{panel.explanationAnnotation}</p>
         )}
       </div>
     )}
@@ -60,7 +61,7 @@ const SummaryPanel: React.FC<{ panel: Panel }> = ({ panel }) => (
         <div className="p-4 sm:p-6 bg-purple-50 border border-purple-200 rounded-xl">
             <p className="text-base sm:text-lg text-purple-800 italic">{panel.content as string}</p>
              {panel.explanationAnnotation && (
-                <p className="text-sm text-purple-700 mt-3">💡 {panel.explanationAnnotation}</p>
+                <p className="text-sm text-purple-700 mt-3">{panel.explanationAnnotation}</p>
             )}
         </div>
          <div className="p-4 sm:p-6 bg-blue-50 border border-blue-200 rounded-xl flex items-start">
@@ -116,7 +117,7 @@ export const SceneViewer: React.FC<SceneViewerProps> = ({ scene, onClose, onBack
   const progressPercentage = ((currentPanelIndex + 1) / scene.panels.length) * 100;
 
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+    <Modal label="Grammar scene" onClose={onClose}>
       <div className="bg-slate-100 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 bg-white/70">
@@ -130,7 +131,7 @@ export const SceneViewer: React.FC<SceneViewerProps> = ({ scene, onClose, onBack
                         <p className="text-sm text-slate-600">{scene.description}</p>
                     </div>
                 </div>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 ml-2">
+                <button aria-label="Close scenes" onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 ml-2">
                     <XMarkIcon className="w-6 h-6 text-slate-500" />
                 </button>
             </div>
@@ -140,7 +141,7 @@ export const SceneViewer: React.FC<SceneViewerProps> = ({ scene, onClose, onBack
         </div>
         
         {/* Content */}
-        <div className="p-4 sm:p-6 flex-grow overflow-y-auto min-h-[300px]">
+        <div className="p-4 sm:p-6 flex-grow overflow-y-auto min-h-[180px]">
           {renderPanel()}
         </div>
         
@@ -149,7 +150,7 @@ export const SceneViewer: React.FC<SceneViewerProps> = ({ scene, onClose, onBack
             <button onClick={handleBack} disabled={currentPanelIndex === 0} className="px-5 py-2.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-700 flex items-center gap-2 transition-colors hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed">
                 <ChevronLeftIcon className="w-5 h-5"/> Back
             </button>
-            <span className="text-sm font-medium text-slate-500 hidden sm:block">
+            <span className="text-sm font-medium text-slate-500">
                 Panel {currentPanelIndex + 1} of {scene.panels.length}
             </span>
             {isLastPanel ? (
@@ -168,6 +169,6 @@ export const SceneViewer: React.FC<SceneViewerProps> = ({ scene, onClose, onBack
             )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

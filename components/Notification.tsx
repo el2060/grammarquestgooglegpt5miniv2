@@ -11,7 +11,7 @@ interface NotificationProps {
 export const Notification: React.FC<NotificationProps> = ({ title, xp, onClose }) => {
   return (
     <div
-      className="fixed top-5 right-5 z-50 w-full max-w-sm bg-white shadow-lg rounded-xl p-4 border border-slate-200 animate-slide-in-right"
+      className="fixed top-4 left-4 right-4 sm:left-auto z-50 sm:w-full max-w-sm bg-white shadow-lg rounded-xl p-4 border border-slate-200 animate-slide-in-right"
       role="alert"
     >
       <div className="flex items-start">

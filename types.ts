@@ -5,6 +5,7 @@ export interface QuizQuestion {
   options: string[];
   correctAnswer: string;
   topic: string;
+  explanation?: string;
 }
 
 export interface FeedbackItem {

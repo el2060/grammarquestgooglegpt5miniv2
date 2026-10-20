@@ -1,58 +1,19 @@
-import { AzureOpenAI } from "openai";
 import type { FeedbackItem, QuizQuestion, ModelRewrite } from '../types';
+import { getActiveGeminiConfig, requestGemini } from './geminiConnection';
 
-// Initialize the Azure OpenAI client
-const client = new AzureOpenAI({
-  apiKey: process.env.AZURE_OPENAI_API_KEY,
-  endpoint: process.env.AZURE_OPENAI_ENDPOINT,
-  apiVersion: process.env.AZURE_OPENAI_API_VERSION,
-  dangerouslyAllowBrowser: true // Required for client-side usage in Vite
-});
+async function callGemini<T>(systemPrompt: string, userPrompt: string, schema: object): Promise<T> {
+  return requestGemini<T>(getActiveGeminiConfig(), systemPrompt, userPrompt, schema);
+}
 
-const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-5-mini";
-
-/**
- * Helper function to call Azure OpenAI with JSON response format
- * GPT-5 mini constraints:
- * - Use max_completion_tokens instead of max_tokens
- * - Temperature must be 1 (default)
- * - Top-p not supported
- */
-async function callAzureOpenAI<T>(
-  systemPrompt: string,
-  userPrompt: string,
-  schema: any
-): Promise<T> {
-  const response = await client.chat.completions.create({
-    model: deployment,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "response",
-        strict: true,
-        schema: schema
-      }
-    },
-    max_completion_tokens: 4096,
-    // Temperature defaults to 1 (required for GPT-5 mini)
-    // Top-p is not supported for GPT-5 mini
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("No response from Azure OpenAI");
+function validateQuestions(questions: QuizQuestion[]): QuizQuestion[] {
+  if (!Array.isArray(questions) || questions.length === 0 || !questions.every(q =>
+    q && typeof q.question === 'string' && q.question.trim() && typeof q.topic === 'string' && q.topic.trim() &&
+    Array.isArray(q.options) && q.options.length === 4 &&
+    q.options.every(option => typeof option === 'string' && option.trim()) &&
+    new Set(q.options).size === 4 && q.options.includes(q.correctAnswer))) {
+    throw new Error('Gemini returned an incomplete quiz. Please try again.');
   }
-
-  try {
-    return JSON.parse(content) as T;
-  } catch (e) {
-    console.error("Failed to parse JSON response:", content, e);
-    throw new Error("The AI returned an invalid format. Please try again.");
-  }
+  return questions;
 }
 
 const quizSchema = {
@@ -69,9 +30,10 @@ const quizSchema = {
             items: { type: "string" }
           },
           correctAnswer: { type: "string" },
-          topic: { type: "string" }
+          topic: { type: "string" },
+          explanation: { type: "string", description: "A short explanation of the grammar rule that makes the correct answer right." }
         },
-        required: ["question", "options", "correctAnswer", "topic"],
+        required: ["question", "options", "correctAnswer", "topic", "explanation"],
         additionalProperties: false
       }
     }
@@ -83,15 +45,15 @@ const quizSchema = {
 export const generateQuiz = async (topic: string): Promise<QuizQuestion[]> => {
   const systemPrompt = "You are an expert grammar coach for polytechnic students in Singapore. Generate contextual, scenario-based quiz questions using relatable Singaporean contexts.";
 
-  const userPrompt = `Generate a 3-question quiz about the grammar topic: "${topic}". The questions must be contextual and scenario-based, using relatable Singaporean contexts, places, or everyday situations (e.g., ordering kopi, taking the MRT, discussing school projects at a polytechnic). Do not focus too narrowly on student or polytechnic life. Ensure the options are plausible and one is clearly correct.`;
+  const userPrompt = `Generate a 3-question quiz about the grammar topic: "${topic}". The questions must be contextual and scenario-based, using relatable Singaporean contexts, places, or everyday situations (e.g., ordering kopi, taking the MRT, discussing school projects at a polytechnic). Do not focus too narrowly on student or polytechnic life. Ensure each question has exactly four distinct options and one is clearly correct. correctAnswer must exactly match one of the options. topic must exactly match the requested topic.`;
 
-  const result = await callAzureOpenAI<{ questions: QuizQuestion[] }>(
+  const result = await callGemini<{ questions: QuizQuestion[] }>(
     systemPrompt,
     userPrompt,
     quizSchema
   );
 
-  return result.questions;
+  return validateQuestions(result.questions);
 };
 
 const feedbackSchema = {
@@ -152,12 +114,17 @@ ${text}
 ---
 `;
 
-  const result = await callAzureOpenAI<{ feedback: FeedbackItem[] }>(
+  const result = await callGemini<{ feedback: FeedbackItem[] }>(
     systemPrompt,
     userPrompt,
     feedbackSchema
   );
 
+  if (!Array.isArray(result.feedback) || !result.feedback.every(item =>
+    item && ['errorType', 'explanation', 'originalSentence', 'correctedSentence', 'learningTip']
+      .every(key => typeof item[key as keyof FeedbackItem] === 'string' && item[key as keyof FeedbackItem].trim()))) {
+    throw new Error('Gemini returned incomplete feedback. Please try again.');
+  }
   return result.feedback;
 };
 
@@ -170,6 +137,7 @@ export const generateQuizFromFeedback = async (feedback: FeedbackItem[]): Promis
 Based on the following identified grammar errors, generate a 5-question multiple-choice quiz.
 - Each question must be contextual and scenario-based, using relatable Singaporean contexts (e.g., ordering food, taking public transport, campus life).
 - The questions should test the specific grammar concepts found in the errors.
+- Each question must have exactly four distinct options. correctAnswer must exactly match one of the options.
 
 Identified Errors:
 ---
@@ -177,13 +145,13 @@ ${errorSummary}
 ---
 `;
 
-  const result = await callAzureOpenAI<{ questions: QuizQuestion[] }>(
+  const result = await callGemini<{ questions: QuizQuestion[] }>(
     systemPrompt,
     userPrompt,
     quizSchema
   );
 
-  return result.questions;
+  return validateQuestions(result.questions);
 };
 
 const modelRewriteSchema = {
@@ -225,11 +193,15 @@ ${feedbackSummary}
 ---
 `;
 
-  const result = await callAzureOpenAI<ModelRewrite>(
+  const result = await callGemini<ModelRewrite>(
     systemPrompt,
     userPrompt,
     modelRewriteSchema
   );
 
+  if (typeof result.rewrittenText !== 'string' || !result.rewrittenText.trim() ||
+    !Array.isArray(result.summaryOfChanges) || !result.summaryOfChanges.every(item => typeof item === 'string')) {
+    throw new Error('Gemini returned an incomplete rewrite. Please try again.');
+  }
   return result;
 };

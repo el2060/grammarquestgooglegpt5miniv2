@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import type { QuizQuestion } from '../types';
 import { XP_PER_CORRECT_ANSWER } from '../constants';
 import { CheckCircleIcon } from './icons/CheckCircleIcon';
@@ -10,6 +10,7 @@ interface QuizProps {
   quizId: string;
   onReset?: () => void;
   onPracticeAgain?: () => void;
+  xpMultiplier?: number;
 }
 
 const renderWithBold = (text: string) => {
@@ -27,22 +28,29 @@ const renderWithItalics = (text: string) => {
 };
 
 
-export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, onReset, onPracticeAgain }) => {
+export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, onReset, onPracticeAgain, xpMultiplier = 1 }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [isFinished, setIsFinished] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const completed = useRef(false);
+  const rewardClaimed = useRef(false);
 
   const currentQuestion = questions[currentQuestionIndex];
 
   const handleSelectAnswer = (answer: string) => {
+    if (checked) return;
     setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: answer }));
   };
 
   const handleNext = () => {
+    if (!checked || completed.current) return;
+    setChecked(false);
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
       setIsFinished(true);
+      completed.current = true;
       const finalScore = questions.reduce((total, question, index) => {
         return total + (userAnswers[index] === question.correctAnswer ? 1 : 0);
       }, 0);
@@ -54,7 +62,10 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
         }
       });
       
-      onQuizComplete(finalScore, questions.length, correctAnswersByTopic);
+      if (!rewardClaimed.current) {
+        rewardClaimed.current = true;
+        onQuizComplete(finalScore, questions.length, correctAnswersByTopic);
+      }
     }
   };
 
@@ -68,22 +79,24 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
     setCurrentQuestionIndex(0);
     setUserAnswers({});
     setIsFinished(false);
+    setChecked(false);
+    completed.current = false;
   }
 
   if (isFinished) {
-    const earnedXp = score * XP_PER_CORRECT_ANSWER;
+    const earnedXp = Math.round(score * XP_PER_CORRECT_ANSWER * xpMultiplier);
 
     return (
       <div className="p-2 sm:p-4">
         <div className="text-center">
-            <h3 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Quiz Complete!</h3>
-            {earnedXp > 0 && <p className="font-semibold text-base text-amber-800 bg-gradient-to-r from-amber-200 to-yellow-200 inline-block px-5 py-2 rounded-full my-4 shadow-md border border-amber-300/50">✨ + {earnedXp} XP Earned!</p>}
+            <h3 className="text-3xl font-bold text-slate-900">Quiz Complete!</h3>
+            {earnedXp > 0 && <p className="font-semibold text-base text-amber-800 bg-gradient-to-r from-amber-200 to-yellow-200 inline-block px-5 py-2 rounded-full my-4 shadow-md border border-amber-300/50">+ {earnedXp} XP Earned!</p>}
             <p className="text-lg my-2 text-slate-600 font-medium">You scored</p>
-            <p className="text-7xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent my-4">{score}<span className="text-5xl text-slate-400"> / {questions.length}</span></p>
+            <p className="text-7xl font-extrabold bg-blue-600 bg-clip-text text-transparent my-4">{score}<span className="text-5xl text-slate-400"> / {questions.length}</span></p>
         </div>
 
         <div className="space-y-3 my-8 text-left">
-            <h4 className="text-xl font-semibold text-slate-800 mb-4">📋 Review Your Answers</h4>
+            <h4 className="text-xl font-semibold text-slate-800 mb-4">Review your answers</h4>
             {questions.map((q, index) => {
                 const userAnswer = userAnswers[index];
                 const isCorrect = userAnswer === q.correctAnswer;
@@ -102,6 +115,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
                                        Correct answer: {renderWithBold(q.correctAnswer)}
                                    </p>
                                 )}
+                                {q.explanation && <p className="mt-2 text-sm text-slate-600">{q.explanation}</p>}
                             </div>
                         </div>
                     </div>
@@ -110,16 +124,16 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
         </div>
         <div className="text-center mt-8 flex flex-col sm:flex-row justify-center items-center gap-4">
             {onPracticeAgain ? (
-                <button onClick={onPracticeAgain} className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl hover:scale-105">
+                <button onClick={onPracticeAgain} className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-sm hover:shadow-sm ">
                     Generate New Practice Set
                 </button>
             ) : (
-                <button onClick={resetQuiz} className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl hover:scale-105">
+                <button onClick={resetQuiz} className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-sm hover:shadow-sm ">
                     Retake Quiz
                 </button>
             )}
             {onReset && (
-                <button onClick={onReset} className="w-full sm:w-auto px-6 py-3 bg-slate-200 text-slate-800 font-semibold rounded-xl hover:bg-slate-300 transition-all shadow-md hover:shadow-lg hover:scale-105">
+                <button onClick={onReset} className="w-full sm:w-auto px-6 py-3 bg-slate-200 text-slate-800 font-semibold rounded-xl hover:bg-slate-300 transition-all shadow-md hover:shadow-sm ">
                     Analyze New Text
                 </button>
             )}
@@ -133,7 +147,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold text-slate-600 mb-2">Question {currentQuestionIndex + 1} of {questions.length}</p>
+        <p className="text-sm font-semibold text-slate-600 mb-2" aria-live="polite">Question {currentQuestionIndex + 1} of {questions.length}</p>
         <div className="bg-slate-200 rounded-full h-3 w-full shadow-inner">
             <div className="bg-gradient-to-r from-blue-500 to-indigo-600 h-3 rounded-full transition-all duration-300 shadow-md" style={{ width: `${progressPercentage}%`}}></div>
         </div>
@@ -145,6 +159,8 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
           return (
             <button
               key={option}
+              aria-pressed={isSelected}
+              disabled={checked}
               onClick={() => handleSelectAnswer(option)}
               className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-between text-base shadow-sm hover:shadow-md ${
                 isSelected
@@ -162,14 +178,17 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, quizId, o
           );
         })}
       </div>
+      {checked && <div role="status" className={`p-4 rounded-xl border ${userAnswers[currentQuestionIndex] === currentQuestion.correctAnswer ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}><p className="font-semibold">{userAnswers[currentQuestionIndex] === currentQuestion.correctAnswer ? 'Correct. Nicely done!' : 'A chance to learn.'}</p><p className="text-sm mt-1">Correct answer: {renderWithBold(currentQuestion.correctAnswer)}</p>{currentQuestion.explanation && <p className="text-sm mt-2">{currentQuestion.explanation}</p>}</div>}
       <div className="text-right pt-2">
+        {!checked ? <button className="primary-button" disabled={!userAnswers[currentQuestionIndex]} onClick={() => setChecked(true)}>Check answer</button> :
         <button
           onClick={handleNext}
           disabled={!userAnswers[currentQuestionIndex]}
-          className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-105"
+          className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-sm "
         >
           {currentQuestionIndex < questions.length - 1 ? 'Next' : 'Finish'}
         </button>
+        }
       </div>
     </div>
   );

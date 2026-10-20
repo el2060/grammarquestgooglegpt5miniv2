@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { analyzeTextForFeedback, generateQuizFromFeedback, generateModelRewrite } from '../services/azureOpenAIService';
+import { analyzeTextForFeedback, generateQuizFromFeedback, generateModelRewrite } from '../services/geminiService';
 import type { QuizQuestion, FeedbackItem, ModelRewrite } from '../types';
 import { SAMPLE_TEXTS } from '../constants';
 import { Quiz } from './Quiz';
@@ -28,7 +28,7 @@ type AnalysisView = 'feedback' | 'quiz' | 'polish';
 export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, selectedTopics, onLearnWithScenesClick, onAnalysisComplete }) => {
   const [text, setText] = useState('');
   const [submittedText, setSubmittedText] = useState('');
-  
+
   const [feedback, setFeedback] = useState<FeedbackItem[] | null>(null);
   const [quiz, setQuiz] = useState<QuizQuestion[] | null>(null);
   const [modelRewrite, setModelRewrite] = useState<ModelRewrite | null>(null);
@@ -37,16 +37,17 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
   const [isLoadingRewrite, setIsLoadingRewrite] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState('');
 
   const [analysisView, setAnalysisView] = useState<AnalysisView>('feedback');
   const [lastSampleIndex, setLastSampleIndex] = useState<number | null>(null);
 
   const handleAnalyze = useCallback(async () => {
-    if (text.trim().length < 10) {
+    if (text.trim().split(/\s+/).length < 10 || selectedTopics.length === 0) {
       alert("Please enter at least 10 words to analyze.");
       return;
     }
-    handleReset(false); 
+    handleReset(false);
     setIsLoadingFeedback(true);
     setError(null);
     setSubmittedText(text);
@@ -54,10 +55,10 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
     try {
       const feedbackResult = await analyzeTextForFeedback(text, selectedTopics);
       setFeedback(feedbackResult);
-      onAnalysisComplete(); 
+      onAnalysisComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unknown error occurred during analysis.");
-      setFeedback([]); 
+      setFeedback(null);
     } finally {
       setIsLoadingFeedback(false);
     }
@@ -76,7 +77,7 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
       setIsLoadingQuiz(false);
     }
   }, [feedback]);
-  
+
   const handlePracticeDiagnosticQuizAgain = useCallback(async () => {
     if (!feedback) return;
 
@@ -124,13 +125,13 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
     setIsLoadingRewrite(false);
     setAnalysisView('feedback');
   };
-  
+
   const handleUseSample = () => {
     let nextIndex;
     do {
       nextIndex = Math.floor(Math.random() * SAMPLE_TEXTS.length);
     } while (nextIndex === lastSampleIndex && SAMPLE_TEXTS.length > 1);
-    
+
     setText(SAMPLE_TEXTS[nextIndex]);
     setLastSampleIndex(nextIndex);
   };
@@ -144,12 +145,12 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
   const wordCount = hasText ? text.trim().split(/\s+/).length : 0;
 
   if (isLoadingFeedback) {
-    return <div className="py-10"><GrammarTipsLoader text="GPT-5 mini is analyzing your grammar..." /></div>;
+    return <div className="py-10"><GrammarTipsLoader text="Gemini is analyzing your grammar..." /></div>;
   }
 
   if (feedback !== null) {
     return (
-        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm">
+        <div className="surface min-w-0">
             <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
                 <h2 className="text-2xl font-bold text-slate-900">Your Analysis Results</h2>
                 <button onClick={() => handleReset(true)} className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition-colors flex-shrink-0">
@@ -161,10 +162,10 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
                 <h3 className="text-sm font-bold text-slate-800 mb-2">Your Analyzed Text</h3>
                 <p className="text-slate-700 text-sm whitespace-pre-wrap">{submittedText}</p>
             </div>
-            
+
             <div className="mt-6">
                 <h3 className="text-lg font-bold text-slate-800 text-center mb-4">Choose Your Analysis</h3>
-                <div className="grid grid-cols-3 gap-2 sm:gap-3 bg-slate-100 p-1.5 rounded-xl">
+                <div className="analysis-tabs" aria-label="Analysis results">
                     {(['feedback', 'quiz', 'polish'] as AnalysisView[]).map(view => {
                         const isActive = analysisView === view;
                         const icons = {
@@ -179,9 +180,9 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
                         }
                         const Icon = icons[view];
                         return (
-                            <button key={view} onClick={() => setAnalysisView(view)} className={`px-4 py-3 rounded-lg text-sm sm:text-base font-semibold transition-colors flex items-center justify-center gap-2 ${isActive ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-white/60'}`}>
+                            <button key={view} aria-label={labels[view]} aria-pressed={isActive} onClick={() => setAnalysisView(view)} >
                                 <Icon className="w-5 h-5" />
-                                <span className="hidden sm:inline">{labels[view]}</span>
+                                <span>{view === 'feedback' ? 'Feedback' : view === 'quiz' ? 'Practice' : 'AI Polish'}</span>
                             </button>
                         )
                     })}
@@ -189,8 +190,8 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
             </div>
 
             <div className="mt-6 min-h-[200px]">
-                {error && <div className="text-center text-red-600 bg-red-50 p-4 rounded-lg">{error}</div>}
-                
+                {error && <div role="alert" className="notice-error">{error}</div>}
+
                 {analysisView === 'feedback' && (
                     <div className="space-y-4 animate-fade-in">
                         {feedback.length > 0 ? feedback.map((item, index) => (
@@ -252,7 +253,7 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
                         {!isLoadingRewrite && modelRewrite && (
                            <div className="space-y-4">
                                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                    <h4 className="font-bold text-blue-800 mb-2">Polished Version:</h4>
+                                    <div className="flex justify-between items-center gap-3 mb-2"><h4 className="font-bold text-blue-800">Polished Version:</h4><button className="quiet-button" onClick={async () => { try { await navigator.clipboard.writeText(modelRewrite.rewrittenText); setCopyStatus('Copied to clipboard'); } catch { setCopyStatus('Copy unavailable. Select the text to copy it.'); } }}>Copy text</button></div><p role="status" className="text-xs text-blue-700 mb-2">{copyStatus}</p>
                                     <p className="text-blue-900 whitespace-pre-wrap">{modelRewrite.rewrittenText}</p>
                                 </div>
                                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
@@ -275,54 +276,21 @@ export const Diagnostics: React.FC<DiagnosticsProps> = ({ onQuizComplete, select
 
 
   return (
-     <div className="bg-gradient-to-br from-white to-blue-50/30 p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-200/60 text-center max-w-3xl mx-auto">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl mb-5 shadow-md">
-            <ClipboardDocumentCheckIcon className="w-9 h-9 text-blue-600" />
-        </div>
-        <h2 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">Diagnostic Tool</h2>
-        <p className="text-slate-600 mt-2 max-w-xl mx-auto font-medium">
-            Analyse your writing to identify grammar areas for improvement. <br />
-            Receive <span className="text-blue-600 font-bold">personalised AI feedback</span> and <span className="text-blue-600 font-bold">targeted practice exercises</span>.
-        </p>
-
-        <div className="mt-6 text-left relative">
-            <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="My final year project is due next month, so me and my groupmates is very busy..."
-                className="w-full h-48 p-4 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-slate-900 placeholder-slate-400 shadow-sm"
-            />
-             <div className="absolute bottom-3 right-3 text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200/50">
-                {wordCount} words
-            </div>
-        </div>
-
-        <button
-            onClick={handleAnalyze}
-            disabled={wordCount < 10}
-            className="w-full px-8 py-4 mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed transition-all shadow-xl hover:shadow-2xl hover:scale-105 flex items-center justify-center gap-2"
-        >
-            <PencilSquareIcon className="w-5 h-5" />
-            Analyse My Writing
-        </button>
-
-        <div className="mt-6 flex items-center justify-center gap-4 text-sm font-medium">
-            <button onClick={handleUseSample} className="text-slate-600 hover:text-blue-600 transition-colors hover:scale-105 transform">
-              {text.length > 0 ? 'Try another sample' : 'Use a sample text'}
-            </button>
-            <span className="text-slate-300">|</span>
-            {text.length > 0 && (
-                <>
-                    <button onClick={handleClearText} className="text-slate-600 hover:text-rose-600 transition-colors hover:scale-105 transform">
-                      Clear text
-                    </button>
-                    <span className="text-slate-300">|</span>
-                </>
-            )}
-            <button onClick={onLearnWithScenesClick} className="text-slate-600 hover:text-green-600 transition-colors hover:scale-105 transform">
-              Learn with Scenes
-            </button>
-        </div>
-    </div>
+    <section className="surface min-w-0" aria-labelledby="writing-heading">
+      <p className="eyebrow">Write. Reflect. Improve.</p>
+      <h2 id="writing-heading" className="text-2xl font-bold tracking-tight mt-2">Get feedback on your writing.</h2>
+      <p className="text-sm text-slate-500 mt-2 leading-relaxed">Share a paragraph. Your coach will explain what to improve and help you practise.</p>
+      {error && <p role="alert" className="notice-error">{error}</p>}
+      <div className="mt-6">
+        <div className="writing-label"><label htmlFor="writing-input">Your writing</label><span>At least 10 words</span></div>
+        <textarea id="writing-input" value={text} onChange={event => setText(event.target.value)} aria-describedby="writing-hint" placeholder="Tell us about your day, paste a paragraph, or try a sample below…" className="w-full h-60 p-4 border border-slate-300 rounded-xl focus:border-blue-500 bg-slate-50/40 text-slate-800 placeholder-slate-400 text-sm leading-7 resize-y" />
+        <div id="writing-hint" className="flex justify-between gap-3 mt-2 text-xs text-slate-500"><span>{selectedTopics.length === 0 ? 'Select a grammar focus to continue.' : hasText && wordCount < 10 ? `${10 - wordCount} more word${10 - wordCount === 1 ? '' : 's'} to start` : 'Your writing is sent to Google when you analyse it.'}</span><span className="whitespace-nowrap" aria-live="polite">{wordCount} words</span></div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mt-5">
+        <div className="flex gap-2"><button className="quiet-button" onClick={handleUseSample}>{hasText ? 'Try another sample' : 'Use a sample text'}</button>{hasText && <button className="quiet-button" onClick={handleClearText}>Clear text</button>}</div>
+        <button className="primary-button w-full sm:w-auto" onClick={handleAnalyze} disabled={wordCount < 10 || selectedTopics.length === 0}><PencilSquareIcon className="w-4 h-4" />Analyse My Writing</button>
+      </div>
+      <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-3 text-xs text-slate-500"><span>Prefer to learn with an example?</span><button className="quiet-button text-blue-700" onClick={onLearnWithScenesClick}>Learn with Scenes</button></div>
+    </section>
   );
 };

@@ -1,18 +1,20 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useReducer, useRef } from 'react';
 import { Header } from './components/Header';
 import { Diagnostics } from './components/Diagnostics';
 import { TopicSelector } from './components/TopicSelector';
 import { Badges } from './components/Badges';
-import type { BadgeId, Scene, Badge } from './types';
-import { ALL_BADGES, XP_PER_CORRECT_ANSWER, ALL_GRAMMAR_TOPICS, LEVELS } from './constants';
+import type { BadgeId, Scene } from './types';
+import { ALL_BADGES, ALL_GRAMMAR_TOPICS, LEVELS } from './constants';
 import { GrammarFocus } from './components/GrammarFocus';
-import { TrashIcon } from './components/icons/TrashIcon';
-import { ExclamationTriangleIcon } from './components/icons/ExclamationTriangleIcon';
 import { LearnWithScenes } from './components/scenes/LearnWithScenes';
 import { SceneViewer } from './components/scenes/SceneViewer';
 import { scenesData } from './components/scenes/scenesData';
-import { PencilIcon } from './components/icons/PencilIcon';
+import { BookOpenIcon } from './components/icons/BookOpenIcon';
 import { Notification } from './components/Notification';
+import { GeminiSetup } from './components/GeminiSetup';
+import { HomePage } from './components/HomePage';
+import { Modal } from './components/Modal';
+import { learningReducer, loadLearningProgress, saveLearningProgress } from './services/learningProgress';
 
 type View = 'diagnostics' | 'quiz' | 'badges';
 
@@ -58,285 +60,89 @@ const getCurrentLevelInfo = (xp: number) => {
     };
 };
 
-interface ProfileHeaderProps {
-  levelInfo: ReturnType<typeof getCurrentLevelInfo>;
-  totalXp: number;
-  badgesEarnedCount: number;
-  onResetAll: () => void;
-}
-
-
-const ProfileHeader: React.FC<ProfileHeaderProps> = ({ levelInfo, totalXp, badgesEarnedCount, onResetAll }) => {
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  return (
-    <div className="bg-gradient-to-br from-white via-white to-blue-50/30 p-4 sm:p-6 rounded-3xl shadow-xl border border-slate-200/60 mb-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-        <div className="flex-shrink-0 order-2 sm:order-1">
-           <img src="https://www.np.edu.sg/images/default-source/default-album/img-logo.png?sfvrsn=764583a6_19" alt="Ngee Ann Polytechnic Logo" className="h-8 sm:h-9 opacity-90" />
-        </div>
-
-        <div className="text-center sm:text-left order-1 sm:order-2 sm:flex-grow sm:ml-4">
-          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Grammar Quest Coach</h1>
-          <p className="text-sm sm:text-md text-slate-600 mt-1 font-medium">✨ AI Adaptive, Gamified Learning</p>
-          <div className="flex flex-wrap justify-center sm:justify-start items-center gap-2 mt-2">
-            <span className="text-xs text-slate-600 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200/50 font-medium">Module: English Language Express (ELE)</span>
-            <span className="text-slate-300 hidden sm:inline">•</span>
-            <span className="text-xs text-slate-600 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200/50 font-medium">School of HMIS</span>
-          </div>
-        </div>
-
-        <div className="text-right text-sm flex-shrink-0 space-y-2 order-3 w-full sm:w-auto">
-           <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
-            <p className="font-medium text-slate-600 text-xs sm:text-sm">{currentDate}</p>
-             <button onClick={onResetAll} className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-lg transition-all hover:scale-105 border border-rose-200/50">
-                <TrashIcon className="w-4 h-4"/>
-                Reset All
-             </button>
-           </div>
-          <div className="flex items-center justify-end gap-2 text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-1.5 border border-amber-200/50">
-            <ExclamationTriangleIcon className="w-4 h-4 text-amber-600 flex-shrink-0"/>
-            <span className="text-left sm:text-right font-medium">Use with discretion. AI may make mistakes.</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 border-t border-slate-200/60 pt-6 flex flex-col md:flex-row items-center gap-4 md:gap-6">
-        <div className="flex items-center bg-gradient-to-br from-slate-50 to-blue-50/40 p-4 sm:p-5 rounded-2xl w-full md:flex-grow border border-slate-200/50 shadow-sm">
-          <div className="bg-gradient-to-br from-blue-100 to-blue-200 p-3 sm:p-4 rounded-xl mr-4 sm:mr-5 flex-shrink-0 shadow-md">
-              <PencilIcon className="h-8 w-8 sm:h-10 sm:w-10 text-blue-600" />
-          </div>
-          <div className="flex-grow">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
-                  <h2 className="text-xl sm:text-2xl font-bold text-slate-800">{levelInfo.title}</h2>
-                  <span className="font-semibold bg-gradient-to-r from-green-500 to-emerald-600 text-white px-3 py-1 rounded-full text-xs sm:text-sm mt-1 sm:mt-0 shadow-md">Level {levelInfo.level} of {LEVELS.length}</span>
-              </div>
-              <p className="text-sm sm:text-md text-slate-600 mt-1 font-medium">{levelInfo.description}</p>
-              <div className="mt-3 sm:mt-4">
-                  <div className="flex justify-between text-xs sm:text-sm font-medium text-slate-600 mb-1.5">
-                      <span>{levelInfo.progressLabel}</span>
-                      {!levelInfo.isMaxLevel && <span><span className="font-bold text-blue-600">{levelInfo.currentLevelXp}</span> / {levelInfo.xpForNextLevel} XP</span>}
-                  </div>
-                  <div className="bg-slate-200 rounded-full h-3 shadow-inner">
-                      <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 h-3 rounded-full transition-all duration-500 shadow-md" style={{ width: `${levelInfo.progressPercentage}%` }}></div>
-                  </div>
-              </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full md:w-auto md:flex-shrink-0 md:w-64">
-            <div className="px-4 py-3 sm:px-6 sm:py-4 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-200/70 text-center border border-blue-200/50 shadow-md hover:shadow-lg transition-shadow">
-              <p className="text-3xl sm:text-4xl font-bold text-blue-600">{totalXp}</p>
-              <p className="text-xs sm:text-sm text-blue-800 font-medium">Total XP</p>
-            </div>
-            <div className="px-4 py-3 sm:px-6 sm:py-4 rounded-2xl bg-gradient-to-br from-green-100 to-emerald-200/70 text-center border border-green-200/50 shadow-md hover:shadow-lg transition-shadow">
-              <p className="text-3xl sm:text-4xl font-bold text-green-600">{badgesEarnedCount}</p>
-              <p className="text-xs sm:text-sm text-green-800 font-medium">Badges Earned</p>
-            </div>
-          </div>
-      </div>
-    </div>
-  );
-};
-
-
 const App: React.FC = () => {
+  const [aiConnected, setAiConnected] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const handleAiConnected = useCallback(() => { setAiConnected(true); setSetupOpen(false); }, []);
+  const handleAiDisconnected = useCallback(() => setAiConnected(false), []);
   const [view, setView] = useState<View>('diagnostics');
-  const [xp, setXp] = useState<number>(() => {
-    const savedXp = localStorage.getItem('userXp');
-    return savedXp ? parseInt(savedXp, 10) : 0;
-  });
-  const [unlockedBadges, setUnlockedBadges] = useState<Set<BadgeId>>(() => {
-    const savedBadges = localStorage.getItem('unlockedBadges');
-    return savedBadges ? new Set(JSON.parse(savedBadges)) : new Set();
-  });
-  const [masteryProgress, setMasteryProgress] = useState<Record<string, number>>(() => {
-    const savedProgress = localStorage.getItem('masteryProgress');
-    return savedProgress ? JSON.parse(savedProgress) : {};
-  });
-    // FIX: Add state to track diagnostic analyses count for new badge type.
-    const [diagnosticAnalysesCount, setDiagnosticAnalysesCount] = useState<number>(() => {
-    const savedCount = localStorage.getItem('diagnosticAnalysesCount');
-    return savedCount ? parseInt(savedCount, 10) : 0;
-  });
-
+  const [progress, dispatch] = useReducer(learningReducer, undefined, loadLearningProgress);
+  const { xp, masteryProgress, diagnosticAnalysesCount } = progress;
+  const unlockedBadges = new Set<BadgeId>(progress.unlockedBadges);
+  const [storageError, setStorageError] = useState(false);
   const [selectedTopics, setSelectedTopics] = useState<Set<string>>(() => new Set(ALL_GRAMMAR_TOPICS));
-
   const [isScenesListVisible, setIsScenesListVisible] = useState(false);
   const [activeScene, setActiveScene] = useState<Scene | null>(null);
-  const [notification, setNotification] = useState<{title: string; xp: number} | null>(null);
-  const [diagnosticsKey, setDiagnosticsKey] = useState(0);
-  const [miniQuizKey, setMiniQuizKey] = useState(0);
-
+  const [resetVisible, setResetVisible] = useState(false);
+  const [practiceVersion, setPracticeVersion] = useState(0);
+  const [notification, setNotification] = useState<{ title: string; xp: number } | null>(null);
+  const seenBadges = useRef(new Set(progress.unlockedBadges));
   const levelInfo = getCurrentLevelInfo(xp);
 
   useEffect(() => {
-    localStorage.setItem('userXp', xp.toString());
-  }, [xp]);
+    if (aiConnected) document.getElementById('learning-workspace')?.focus({ preventScroll: true });
+  }, [aiConnected]);
 
+  useEffect(() => { setStorageError(!saveLearningProgress(progress)); }, [progress]);
   useEffect(() => {
-    localStorage.setItem('unlockedBadges', JSON.stringify(Array.from(unlockedBadges)));
-  }, [unlockedBadges]);
-
+    const earned = ALL_BADGES.filter(b => progress.unlockedBadges.includes(b.id) && !seenBadges.current.has(b.id));
+    seenBadges.current = new Set(progress.unlockedBadges);
+    if (earned.length) setNotification({ title: earned.map(b => b.title).join(', '), xp: earned.reduce((sum, b) => sum + b.xp, 0) });
+  }, [progress.unlockedBadges]);
   useEffect(() => {
-    localStorage.setItem('masteryProgress', JSON.stringify(masteryProgress));
-  }, [masteryProgress]);
-  
-    // FIX: Add useEffect to save diagnostic analyses count to local storage.
-    useEffect(() => {
-    localStorage.setItem('diagnosticAnalysesCount', diagnosticAnalysesCount.toString());
-  }, [diagnosticAnalysesCount]);
-
-  useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 5000); // Notification disappears after 5 seconds
-      return () => clearTimeout(timer);
-    }
+    if (!notification) return;
+    const timer = setTimeout(() => setNotification(null), 6000);
+    return () => clearTimeout(timer);
   }, [notification]);
 
-  const handleResetAll = () => {
-    // Clear persistent storage
-    localStorage.removeItem('userXp');
-    localStorage.removeItem('unlockedBadges');
-    localStorage.removeItem('masteryProgress');
-    localStorage.removeItem('diagnosticAnalysesCount');
-
-    // Reload the page to ensure all state is cleared from memory
-    window.location.reload();
-  };
-
-  const handleUnlockBadge = useCallback((badge: Badge) => {
-    setUnlockedBadges(prev => {
-      if (prev.has(badge.id)) {
-        return prev;
-      }
-      const newBadges = new Set(prev);
-      newBadges.add(badge.id);
-      
-      setXp(currentXp => currentXp + badge.xp);
-      setNotification({ title: badge.title, xp: badge.xp });
-      
-      return newBadges;
-    });
+  const handleQuizComplete = useCallback((score: number, _questions: number, correctAnswersByTopic: Record<string, number>, xpMultiplier = 1) => {
+    dispatch({ type: 'quiz', score, correctAnswersByTopic, xpMultiplier });
   }, []);
-  
-    // FIX: Add handler to be called when a diagnostic analysis is completed.
-    const handleDiagnosticAnalysisComplete = () => {
-    setDiagnosticAnalysesCount(prev => prev + 1);
-  };
-
-  const handleQuizComplete = useCallback((score: number, questionsAnswered: number, correctAnswersByTopic: Record<string, number>, xpMultiplier: number = 1) => {
-    setXp(prevXp => prevXp + Math.round(score * XP_PER_CORRECT_ANSWER * xpMultiplier));
-
-    setMasteryProgress(prevProgress => {
-        const newProgress = { ...prevProgress };
-        for (const topic in correctAnswersByTopic) {
-            newProgress[topic] = (newProgress[topic] || 0) + correctAnswersByTopic[topic];
-        }
-        return newProgress;
-    });
-  }, []);
-  
-  // FIX: Update badge unlocking logic to handle both 'mastery' and 'diagnostic' badge types.
-  useEffect(() => {
-    ALL_BADGES.forEach(badge => {
-        if (unlockedBadges.has(badge.id)) return;
-
-        if (badge.type === 'mastery' && badge.topic) {
-            if ((masteryProgress[badge.topic] || 0) >= badge.masteryThreshold!) {
-                handleUnlockBadge(badge);
-            }
-        } else if (badge.type === 'diagnostic' && badge.analysisCount) {
-            if (diagnosticAnalysesCount >= badge.analysisCount) {
-                handleUnlockBadge(badge);
-            }
-        }
-    });
-  }, [masteryProgress, diagnosticAnalysesCount, unlockedBadges, handleUnlockBadge]);
-
-
-  const handleSelectScene = (sceneId: string) => {
-    const scene = scenesData.find(s => s.id === sceneId);
-    if (scene) {
-      setActiveScene(scene);
-      setIsScenesListVisible(false);
-    }
-  };
-
-  const handleBackToScenes = () => {
-    setActiveScene(null);
-    setIsScenesListVisible(true);
+  const handleAnalysisComplete = useCallback(() => dispatch({ type: 'analysis' }), []);
+  const handleReset = () => {
+    dispatch({ type: 'reset' });
+    seenBadges.current = new Set();
+    setNotification(null);
+    setPracticeVersion(version => version + 1);
+    setResetVisible(false);
   };
 
   return (
-    <>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 text-slate-800 flex flex-col">
-        <main className="flex-grow container mx-auto p-2 sm:p-4 md:p-6 max-w-7xl w-full">
-          <ProfileHeader 
-            levelInfo={levelInfo} 
-            totalXp={xp} 
-            badgesEarnedCount={unlockedBadges.size}
-            onResetAll={handleResetAll} 
-          />
+    <div className={`app-shell${!aiConnected ? ' is-home' : ''}`}>
+      <a className="skip-link" href="#learning-workspace">Skip to learning</a>
+      <header className="app-header">
+        <div className="brand"><img className="brand-logo" src="/np-logo.png" alt="Ngee Ann Polytechnic" width={430} height={110} /><div><h1>Grammar Quest Coach</h1><p>English Language Express <span aria-hidden="true">/</span> School of HMIS</p></div></div>
+        <div className="header-actions">{!aiConnected && <a className="quiet-button home-how-link" href="#how-it-works">How it works</a>}<button className="quiet-button" onClick={() => setIsScenesListVisible(true)}><BookOpenIcon className="w-4 h-4" /> Learn with Scenes</button>{aiConnected ? <button className="quiet-button" onClick={() => setResetVisible(true)}>Reset progress</button> : <button className="home-header-start" onClick={() => setSetupOpen(true)}>Connect my coach</button>}</div>
+      </header>
+      <main id="learning-workspace" className="app-main" tabIndex={-1}>
+        {aiConnected && <div className="progress-strip">
+          <div className="level-summary"><span className="level-number">{levelInfo.level}</span><div><strong>{levelInfo.title}</strong><span>Level {levelInfo.level} of {LEVELS.length}</span></div></div>
+          <div className="level-progress"><div><span>{levelInfo.progressLabel}</span><strong>{levelInfo.isMaxLevel ? 'Complete' : `${levelInfo.currentLevelXp} / ${levelInfo.xpForNextLevel} XP`}</strong></div><div role="progressbar" aria-label="Level progress" aria-valuenow={Math.round(levelInfo.progressPercentage)} aria-valuemin={0} aria-valuemax={100} className="progress-track"><div style={{ width: `${levelInfo.progressPercentage}%` }} /></div></div>
+          <div className="progress-stat"><strong>{xp}</strong><span>Total XP</span></div><div className="progress-stat"><strong>{unlockedBadges.size}<small> / {ALL_BADGES.length}</small></strong><span>Badges earned</span></div>
+        </div>}
+        {storageError && <p role="status" className="notice-error">Progress is available for this session. Allow browser storage to keep it after closing the app.</p>}
+        <GeminiSetup connected={aiConnected} onConnected={handleAiConnected} onDisconnected={handleAiDisconnected} open={setupOpen} onClose={() => setSetupOpen(false)} />
+        {!aiConnected && <HomePage onGetStarted={() => setSetupOpen(true)} onExploreScenes={() => setIsScenesListVisible(true)} />}
+        {aiConnected && <>
           <Header currentView={view} setView={setView} />
-          <div className="mt-6 sm:mt-8">
-            <div style={{ display: view === 'diagnostics' ? 'block' : 'none' }}>
-              <GrammarFocus selectedTopics={selectedTopics} onSelectionChange={setSelectedTopics} />
-              <div className="mt-6 sm:mt-8">
-                  <Diagnostics 
-                    key={diagnosticsKey}
-                    onQuizComplete={handleQuizComplete} 
-                    selectedTopics={Array.from(selectedTopics)} 
-                    onLearnWithScenesClick={() => setIsScenesListVisible(true)}
-                    onAnalysisComplete={handleDiagnosticAnalysisComplete}
-                  />
+          <div className="workspace-content">
+            <div hidden={view !== 'diagnostics'}>
+              <div className="writing-layout">
+                <aside><GrammarFocus selectedTopics={selectedTopics} onSelectionChange={setSelectedTopics} /><div className="study-note"><BookOpenIcon className="w-5 h-5" /><p>Practise a little, often.<br />Start with a sample or a paragraph from your day.</p></div></aside>
+                <Diagnostics key={practiceVersion} onQuizComplete={handleQuizComplete} selectedTopics={Array.from(selectedTopics)} onLearnWithScenesClick={() => setIsScenesListVisible(true)} onAnalysisComplete={handleAnalysisComplete} />
               </div>
             </div>
-            <div style={{ display: view === 'quiz' ? 'block' : 'none' }}>
-               <TopicSelector 
-                  key={miniQuizKey} 
-                  onQuizComplete={handleQuizComplete}
-                  unlockedBadges={unlockedBadges}
-                />
-            </div>
-            <div style={{ display: view === 'badges' ? 'block' : 'none' }}>
-                <Badges 
-                    allBadges={ALL_BADGES} 
-                    unlockedBadges={ALL_BADGES.filter(b => unlockedBadges.has(b.id))} 
-                    masteryProgress={masteryProgress}
-                    diagnosticAnalysesCount={diagnosticAnalysesCount}
-                />
-            </div>
+            <div hidden={view !== 'quiz'}><TopicSelector key={practiceVersion} onQuizComplete={handleQuizComplete} unlockedBadges={unlockedBadges} masteryProgress={masteryProgress} /></div>
+            <div hidden={view !== 'badges'}><Badges allBadges={ALL_BADGES} unlockedBadges={ALL_BADGES.filter(b => unlockedBadges.has(b.id))} masteryProgress={masteryProgress} diagnosticAnalysesCount={diagnosticAnalysesCount} /></div>
           </div>
-        </main>
-      </div>
-      {notification && (
-        <Notification
-          title={notification.title}
-          xp={notification.xp}
-          onClose={() => setNotification(null)}
-        />
-      )}
-      {isScenesListVisible && (
-        <LearnWithScenes
-          onClose={() => setIsScenesListVisible(false)}
-          onSceneSelect={handleSelectScene}
-        />
-      )}
-      {activeScene && (
-        <SceneViewer
-          scene={activeScene}
-          onClose={() => setActiveScene(null)}
-          onBackToScenes={handleBackToScenes}
-        />
-      )}
-    </>
+        </>}
+        <footer className="app-footer"><span>Small steps. Stronger sentences.</span><span>AI can make mistakes. Review its suggestions.</span></footer>
+      </main>
+      {notification && <Notification title={notification.title} xp={notification.xp} onClose={() => setNotification(null)} />}
+      {resetVisible && <Modal label="Reset learning progress" onClose={() => setResetVisible(false)}><div className="p-6 max-w-md"><p className="eyebrow">A fresh start</p><h2 className="text-2xl font-bold mt-2">Reset learning progress?</h2><p className="text-slate-600 my-4">This clears your XP, badges, mastery and current practice. Your Gemini key stays saved. This cannot be undone.</p><div className="flex gap-3 justify-end"><button className="secondary-button" autoFocus onClick={() => setResetVisible(false)}>Keep my progress</button><button className="danger-button" onClick={handleReset}>Reset progress</button></div></div></Modal>}
+      {isScenesListVisible && <LearnWithScenes onClose={() => setIsScenesListVisible(false)} onSceneSelect={id => { const scene = scenesData.find(s => s.id === id); if (scene) { setActiveScene(scene); setIsScenesListVisible(false); } }} />}
+      {activeScene && <SceneViewer scene={activeScene} onClose={() => setActiveScene(null)} onBackToScenes={() => { setActiveScene(null); setIsScenesListVisible(true); }} />}
+    </div>
   );
 };
-
 export default App;
