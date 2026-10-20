@@ -8,9 +8,9 @@ An AI grammar coach with writing feedback, topic quizzes, practice quizzes based
 2. Run `npm run dev` and open http://localhost:3000.
 3. Create a key in [Google AI Studio](https://aistudio.google.com/apikey) ([getting started](https://aistudio.google.com/docs/get-started)).
 4. Choose **Get started** on the homepage, paste the key into **Bring your own Gemini API key**, then choose **Test & save key**.
-5. A real structured generation request must succeed before the key is saved and the learning features open. Saved keys are retested on reload.
+5. A real structured generation request must succeed before the key is saved and the learning features open. Setup tests use a 20-second limit and a small response budget. Unavailable models are retried with bounded backoff, then the default model is verified as a fallback; the actual selected model is saved and shown in the connection status. Saved keys are retested on reload.
 
-No `.env.local`, Azure deployment, or shared API key is required. The default model is `gemini-3.8-flash`; a different text model supporting structured JSON output can be entered under Advanced and tested. See [Gemini model documentation](https://ai.google.dev/gemini-api/docs/models).
+No `.env.local`, Azure deployment, or shared API key is required. The default model is `gemini-3.6-flash`; a different text model supporting structured JSON output can be entered under Advanced and tested. See [Gemini model documentation](https://ai.google.dev/gemini-api/docs/models).
 
 ## Key storage and privacy
 
@@ -42,3 +42,11 @@ The UI refinement was verified with 25 service/progress tests, 8 browser tests, 
 ## Homepage
 
 The first screen uses a small original avatar, centred introduction and simple feature summaries. **Get started** and **Connect my coach** open Gemini setup in a dismissible dialog; the key form is not shown on the homepage. **Explore scenes** works without a key. Saved keys are still verified automatically on return. The homepage was checked at 390, 768, 1024 and 1440 pixels, including avatar loading, horizontal overflow, dialog Escape and focus restoration. All 9 browser regression tests passed.
+
+## Gemini connection reliability
+
+The default is the explicit `gemini-3.6-flash` model. For supported 3.5/3.6 Flash models, requests use minimal thinking for these short grammar tasks. Normal output is capped at 4096 tokens; the connection probe is capped at 512. Temporary HTTP 500/502/503/504 responses receive up to two retries within the overall deadline. Invalid-key and quota errors are not retried or bypassed. User cancellation and server timeout are reported separately. A failed selected-model probe falls back only on availability errors, verifies the default with a real generation, and returns the verified model to setup before saving.
+
+For low-rate live verification, `GEMINI_LIVE_DELAY_MS=15000` spaces the feature checks. Credentials remain process-only and are removed from isolated browser storage after the test. Google quota and service capacity still apply.
+
+Live verification of the connection fix: a supplied key successfully connected in both the isolated browser test and the user's open app, using `gemini-3.6-flash`. Live writing feedback also succeeded. The full live feature sequence did not pass: subsequent AI Polish requests encountered Google HTTP 503/high demand and HTTP 429/quota responses. Do not confuse these provider errors with an invalid key or claim all live features passed. The key itself is not included in project files.

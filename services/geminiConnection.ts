@@ -4,7 +4,7 @@ export interface GeminiConfig {
 }
 
 export const GEMINI_STORAGE_KEY = 'grammarQuest.gemini.v1';
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 let activeConfig: GeminiConfig | null = null;
 
 export function loadGeminiConfig(): GeminiConfig | null {
@@ -49,9 +49,21 @@ interface GeminiResponse {
   promptFeedback?: { blockReason?: string };
 }
 
+class GeminiAvailabilityError extends Error {}
+
+function waitForRetry(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+  });
+}
+
 export async function requestGemini<T>(
   config: GeminiConfig, systemPrompt: string, prompt: string, schema: object,
   signal?: AbortSignal,
+  options: { timeoutMs?: number; maxOutputTokens?: number } = {},
 ): Promise<T> {
   if (!config.apiKey.trim()) throw new Error('Enter your Gemini API key.');
   if (!/^[a-zA-Z0-9._-]+$/.test(config.model)) throw new Error('Enter a valid Gemini model ID.');
@@ -59,9 +71,12 @@ export async function requestGemini<T>(
   const cancel = () => controller.abort();
   signal?.addEventListener('abort', cancel, { once: true });
   if (signal?.aborted) controller.abort();
-  const timeout = setTimeout(cancel, 60_000);
+  const timeoutMs = options.timeoutMs ?? 60_000;
+  const timeout = setTimeout(cancel, timeoutMs);
   try {
-    const response = await fetch(
+    let response: Response;
+    for (let attempt = 0; ; attempt++) {
+      response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
       {
         method: 'POST',
@@ -69,19 +84,29 @@ export async function requestGemini<T>(
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema, maxOutputTokens: 8192 },
+          generationConfig: {
+            responseMimeType: 'application/json', responseJsonSchema: schema,
+            maxOutputTokens: options.maxOutputTokens ?? 4096,
+            ...(/^gemini-3\.(5|6)-flash(?:$|-)/.test(config.model) ? { thinkingConfig: { thinkingLevel: 'minimal' } } : {}),
+          },
         }),
         signal: controller.signal,
       },
-    );
+      );
+      if (![500, 502, 503, 504].includes(response.status) || attempt === 2) break;
+      // Only retry temporary server failures, with a small bounded backoff.
+      await waitForRetry(600 * (attempt + 1), controller.signal);
+    }
     if (!response.ok) {
       // Do not echo Google's response: it can contain credentials or submitted writing.
       switch (response.status) {
         case 400: throw new Error('Gemini rejected the request. Check your API key and model in Gemini settings.');
         case 401: case 403: throw new Error('Gemini could not authenticate your key. Check that it is valid and allowed to use the Gemini API on this website.');
-        case 404: throw new Error('This Gemini model is unavailable. Choose an available model in Gemini settings and test again.');
+        case 404: throw new GeminiAvailabilityError('This Gemini model is unavailable. Choose an available model in Gemini settings and test again.');
         case 429: throw new Error('Gemini quota or rate limit reached. Check your AI Studio quota or billing, or wait and try again.');
-        default: throw new Error(response.status >= 500 ? 'Gemini is temporarily unavailable. Please try again shortly.' : `Gemini request failed (${response.status}). Please try again.`);
+        default:
+          if (response.status >= 500) throw new GeminiAvailabilityError(`Gemini is temporarily unavailable (HTTP ${response.status}). Please try again shortly.`);
+          throw new Error(`Gemini request failed (${response.status}). Please try again.`);
       }
     }
     const data: GeminiResponse = await response.json();
@@ -101,7 +126,8 @@ export async function requestGemini<T>(
       throw new Error('Gemini returned an invalid answer format. Please try again.');
     }
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('The Gemini request was cancelled or timed out. Please try again.');
+    if (signal?.aborted) throw new Error('The Gemini request was cancelled.');
+    if (controller.signal.aborted) throw new GeminiAvailabilityError(`Gemini timed out after ${Math.round(timeoutMs / 1000)} seconds. Please retry or select another model.`);
     if (error instanceof TypeError) throw new Error('Could not reach Gemini. Check your internet connection and API key website restrictions.');
     throw error;
   } finally {
@@ -110,11 +136,22 @@ export async function requestGemini<T>(
   }
 }
 
-export async function testGeminiConnection(config: GeminiConfig, signal?: AbortSignal): Promise<void> {
-  const result = await requestGemini<{ connected: boolean }>(config,
-    'You are Grammar Quest Coach. Follow the requested JSON schema.',
-    'Connection test: return {"connected":true}.',
-    { type: 'object', properties: { connected: { type: 'boolean' } }, required: ['connected'], additionalProperties: false },
-    signal);
-  if (result.connected !== true) throw new Error('Gemini did not pass the connection test. Please try again.');
+export async function testGeminiConnection(config: GeminiConfig, signal?: AbortSignal): Promise<GeminiConfig> {
+  const verify = async (candidate: GeminiConfig) => {
+    const result = await requestGemini<{ connected: boolean }>(candidate,
+      'You are Grammar Quest Coach. Follow the requested JSON schema.',
+      'Connection test: return {"connected":true}.',
+      { type: 'object', properties: { connected: { type: 'boolean' } }, required: ['connected'], additionalProperties: false },
+      signal, { timeoutMs: 20_000, maxOutputTokens: 512 });
+    if (result.connected !== true) throw new Error('Gemini did not pass the connection test. Please try again.');
+    return candidate;
+  };
+  try {
+    return await verify(config);
+  } catch (error) {
+    // Old saved defaults and custom models may be retired, overloaded or unresponsive.
+    // Verify a working replacement before saving it; never retry invalid keys or quota failures.
+    if (signal?.aborted || !(error instanceof GeminiAvailabilityError) || config.model === DEFAULT_GEMINI_MODEL) throw error;
+    return verify({ ...config, model: DEFAULT_GEMINI_MODEL });
+  }
 }

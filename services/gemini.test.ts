@@ -36,6 +36,7 @@ describe('Gemini BYOK connection', () => {
     expect(JSON.parse(options.body).generationConfig).toMatchObject({ responseMimeType: 'application/json', responseJsonSchema: { required: ['connected'] } });
     expect(loadGeminiConfig()).toBeNull();
     expect(() => getActiveGeminiConfig()).toThrow();
+    expect(JSON.parse(options.body).generationConfig.maxOutputTokens).toBe(512);
   });
   it('saves and removes only Gemini settings while preserving learning progress', () => {
     localStorage.setItem('userXp', '50');
@@ -56,6 +57,51 @@ describe('Gemini BYOK connection', () => {
   it('rejects unsuccessful connection probes', async () => {
     vi.stubGlobal('fetch', mockReply({ connected: false }));
     await expect(testGeminiConnection(config)).rejects.toThrow('did not pass');
+  });
+  it('verifies a working replacement when the old model is unavailable', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"connected":true}' }] }, finishReason: 'STOP' }] })));
+    vi.stubGlobal('fetch', fetch);
+    const verified = await testGeminiConnection({ ...config, model: 'gemini-3.8-flash' });
+    expect(verified.model).toBe(DEFAULT_GEMINI_MODEL);
+    expect(fetch.mock.calls[3][0]).toContain(DEFAULT_GEMINI_MODEL);
+    expect(loadGeminiConfig()).toBeNull();
+  });
+  it('never switches models for authentication or quota failures', async () => {
+    for (const status of [400, 401, 403, 429]) {
+      const fetch = vi.fn().mockResolvedValue(new Response('{}', { status }));
+      vi.stubGlobal('fetch', fetch);
+      await expect(testGeminiConnection({ ...config, model: 'custom-model' })).rejects.toThrow();
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('recovers from a temporary Google server error without switching models', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"connected":true}' }] } }] })));
+    vi.stubGlobal('fetch', fetch);
+    expect((await testGeminiConnection(config)).model).toBe(DEFAULT_GEMINI_MODEL);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('distinguishes cancellation and does not try another model after cancelling', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))));
+    const result = expect(testGeminiConnection({ ...config, model: 'custom-model' }, controller.signal)).rejects.toThrow('cancelled');
+    controller.abort();
+    await result;
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('tries a replacement after an old model times out', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn()
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"connected":true}' }] } }] })));
+    vi.stubGlobal('fetch', fetch);
+    const result = testGeminiConnection({ ...config, model: 'old-model' });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect((await result).model).toBe(DEFAULT_GEMINI_MODEL);
   });
   it.each([[400, 'rejected'], [401, 'authenticate'], [403, 'authenticate'], [404, 'model is unavailable'], [429, 'quota'], [503, 'temporarily unavailable']])('reports HTTP %i without exposing response credentials', async (status, message) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(config.apiKey, { status: status as number })));

@@ -97,6 +97,20 @@ test('failed keys and replacements do not unlock or overwrite a verified connect
   await expect(page.getByRole('button', { name: 'Analyse My Writing' })).toBeVisible();
 });
 
+test('an unavailable old model falls back to a verified working model before saving', async ({ page }) => {
+  await mockGemini(page, []);
+  await page.route('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent', route => route.fulfill({ status: 503, json: {} }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Get started', exact: true }).click();
+  await page.getByLabel('Gemini API key', { exact: true }).fill(fakeKey);
+  await page.getByText('Advanced: Gemini model', { exact: true }).click();
+  await page.getByLabel('Model ID', { exact: true }).fill('gemini-3.8-flash');
+  await page.getByRole('button', { name: 'Test & save key' }).click();
+  await expect(page.getByRole('heading', { name: 'Gemini AI connected' })).toBeVisible({ timeout: 10_000 });
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).model, storageKey)).toBe('gemini-3.6-flash');
+  await expect(page.getByText('Your key powers all AI features · gemini-3.6-flash')).toBeVisible();
+});
+
 test('all AI learning flows render results and quizzes award XP', async ({ page }) => {
   const requests: string[] = [];
   await mockGemini(page, requests);

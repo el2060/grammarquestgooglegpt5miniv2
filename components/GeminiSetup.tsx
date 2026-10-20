@@ -28,9 +28,11 @@ export function GeminiSetup({ connected, onConnected, onDisconnected, open, onCl
     const controller = new AbortController();
     pending.current = controller;
     setTesting(true);
-    testGeminiConnection(config, controller.signal).then(() => {
+    testGeminiConnection(config, controller.signal).then(verified => {
       if (controller.signal.aborted) return;
-      saveGeminiConfig(config);
+      saveGeminiConfig(verified);
+      setSaved(verified);
+      setModel(verified.model);
       setNotice('Connection verified. Your AI coach is ready.');
       onConnected();
     }).catch(err => {
@@ -51,12 +53,12 @@ export function GeminiSetup({ connected, onConnected, onDisconnected, open, onCl
     const controller = new AbortController();
     pending.current = controller;
     try {
-      await testGeminiConnection(config, controller.signal);
+      const verified = await testGeminiConnection(config, controller.signal);
       if (controller.signal.aborted) return;
-      saveGeminiConfig(config);
-      setSaved(config);
-      setApiKey(config.apiKey);
-      setModel(config.model);
+      saveGeminiConfig(verified);
+      setSaved(verified);
+      setApiKey(verified.apiKey);
+      setModel(verified.model);
       setVisible(false);
       setEditing(false);
       setNotice('Connection verified and key saved. Your AI coach is ready.');
@@ -95,7 +97,7 @@ export function GeminiSetup({ connected, onConnected, onDisconnected, open, onCl
   const content = (
     <section aria-labelledby="gemini-heading" className={connected ? "connection-bar" : "setup-layout"}>
       {!connected && <div className="setup-intro"><p className="eyebrow">Let's meet your coach</p><h2 id="gemini-heading">Bring your own Gemini API key</h2><p>Your next small win is almost here. Connect your key once, and we'll check that everything works.</p><ol className="setup-steps"><li><span>1</span><div><strong>Get your Gemini key</strong>Create one in Google AI Studio.</div></li><li><span>2</span><div><strong>Test and save</strong>We verify the connection before you start.</div></li><li><span>3</span><div><strong>Make yourself at home</strong>Feedback, practice and AI Polish are ready.</div></li></ol></div>}
-      {connected && <div className="connection-summary"><div><h2 id="gemini-heading"><span className="connection-dot" />Gemini AI connected</h2><p>Your key powers all AI features.</p></div><button type="button" onClick={() => { setEditing(!editing); setApiKey(saved?.apiKey || ''); setModel(saved?.model || DEFAULT_GEMINI_MODEL); setError(''); setVisible(false); }} disabled={testing} className="quiet-button">{editing ? 'Close settings' : 'Gemini settings'}</button></div>}
+      {connected && <div className="connection-summary"><div><h2 id="gemini-heading"><span className="connection-dot" />Gemini AI connected</h2><p>Your key powers all AI features · {saved?.model}</p></div><button type="button" onClick={() => { setEditing(!editing); setApiKey(saved?.apiKey || ''); setModel(saved?.model || DEFAULT_GEMINI_MODEL); setError(''); setVisible(false); }} disabled={testing} className="quiet-button">{editing ? 'Close settings' : 'Gemini settings'}</button></div>}
       {(!connected || editing) && (
         <form onSubmit={handleSubmit} className="setup-form space-y-4">
           {!connected && <div><p className="eyebrow">One-time setup</p><h3 className="font-bold text-lg mt-2">Connect to start learning</h3></div>}
@@ -111,7 +113,7 @@ export function GeminiSetup({ connected, onConnected, onDisconnected, open, onCl
             <summary className="text-sm text-slate-600 cursor-pointer">Advanced: Gemini model</summary>
             <label htmlFor="gemini-model" className="block text-sm font-semibold mt-3 mb-2">Model ID</label>
             <input id="gemini-model" value={model} onChange={event => setModel(event.target.value)} required disabled={testing} pattern="[a-zA-Z0-9._\-]+" className="w-full border border-slate-300 rounded-lg px-3 py-2" />
-            <p className="text-xs text-slate-500 mt-1">Default: Gemini 3.8 Flash. Changing the model requires a new connection test.</p>
+            <p className="text-xs text-slate-500 mt-1">Default: Gemini 3.6 Flash. If another model is unavailable, we'll test this default before connecting. Your working model appears in the connection status.</p>
           </details>
           <p id="gemini-privacy" className="text-xs text-slate-600">Your key is saved in this browser on this device. It is sent directly to Google with your writing for AI requests. Anyone with access to this browser can retrieve the saved key; remove it when using a shared device. Google API usage limits and charges may apply. The connection test makes a small AI request.</p>
           <div className="flex flex-wrap gap-3">
